@@ -1,0 +1,39 @@
+# Binaries
+*.exe
+*.out
+*.dll
+*.so
+*.dylib
+
+# Go specific
+/bin/
+/pkg/
+/vendor/
+/coverage.out
+
+# Dependency directories
+go.sum
+go.mod
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+*.swn
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.iml
+
+# Environment variables
+.env
+
+# Test and debug files
+*.test
+*.prof
+
+# Cache
+*.cache
+__pycache__/
