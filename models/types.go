@@ -35,3 +35,20 @@ type EtherscanResponse struct {
 	Message string        `json:"message"`
 	Result  []EtherscanTx `json:"result"`
 }
+
+type Payer struct {
+	PayerAddress string             `json:"payer_address"`
+	Amount       float64            `json:"amount"`
+	Transactions []PayerTransaction `json:"transactions"`
+}
+
+type PayerTransaction struct {
+	TxAmount      float64 `json:"tx_amount"`
+	DateTime      string  `json:"date_time"`
+	TransactionID string  `json:"transaction_id"`
+}
+
+type APIPayerResponse struct {
+	Message string       `json:"message"`
+	Data    []Payer `json:"data"`
+}
