@@ -37,20 +37,23 @@ func TestMain(m *testing.M) {
 }
 
 func TestBeneficiaryValidAddress(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/beneficiary?address=0x742d35Cc6634C0532925a3b844Bc454e4438f44e", nil)
+	rec := httptest.NewRecorder()
+	handlers.Beneficiary(rec, req)
 
-	req, err := http.NewRequest("GET", "/beneficiary?address=0x742d35Cc6634C0532925a3b844Bc454e4438f44e", nil)
-	assert.Nil(t, err)
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(handlers.Beneficiary) // Use actual handler
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code) // Check HTTP Status Code
+	if rec.Code != 200 {
+		t.Errorf("Expected status 200, got %d", rec.Code)
+	}
 
 	var response map[string]interface{}
-	err = json.Unmarshal(rr.Body.Bytes(), &response)
-	assert.Nil(t, err)
-	assert.Equal(t, "success", response["message"])
+	err := json.Unmarshal(rec.Body.Bytes(), &response)
+	if err != nil {
+		t.Errorf("Error parsing JSON: %v", err)
+	}
+
+	if response["message"] != "success" {
+		t.Errorf("Expected success message, got %v", response["message"])
+	}
 }
 
 func TestBeneficiaryInvalidAddress(t *testing.T) {

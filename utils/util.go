@@ -2,52 +2,55 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"ethereum-fund-flow/models"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 const etherscanAPI = "https://api.etherscan.io/api"
 
 // FetchTransactions fetches transactions from Etherscan
-func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, int, error) {
+func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, error) {
     url := fmt.Sprintf("%s?module=account&action=%s&address=%s&apikey=%s", etherscanAPI, action, address, apiKey)
     resp, err := http.Get(url)
     if err != nil {
-        return nil, http.StatusInternalServerError, err
+        return nil, fmt.Errorf("HTTP request failed: %v", err)
     }
     defer resp.Body.Close()
 
     body, err := io.ReadAll(resp.Body)
     if err != nil {
-        return nil, http.StatusInternalServerError, err
+        return nil, fmt.Errorf("failed to read response body: %v", err)
     }
 
-	var etherscanResp struct {
+    var etherscanResp struct {
         Status  string      `json:"status"`
         Message string      `json:"message"`
         Result  interface{} `json:"result"`
     }
 
     if err := json.Unmarshal(body, &etherscanResp); err != nil {
-        return nil, http.StatusInternalServerError, err
+        return nil, fmt.Errorf("failed to parse JSON: %v", err)
     }
 
     if etherscanResp.Status != "1" {
-        if msg, ok := etherscanResp.Result.(string); ok && msg == "Invalid Address format" {
-            return nil, http.StatusBadRequest, fmt.Errorf("invalid Ethereum address")
-        }
-        return nil, http.StatusInternalServerError, fmt.Errorf("etherscan API error: %s", etherscanResp.Message)
+        errMsg := fmt.Sprintf("Etherscan API error: %s - %v", etherscanResp.Message, etherscanResp.Result)
+        return nil, fmt.Errorf(errMsg)
     }
 
-	// ✅ Safely convert result to transactions slice
-    transactions, ok := etherscanResp.Result.([]models.EtherscanTx)
-    if !ok {
-        return nil, http.StatusInternalServerError, fmt.Errorf("unexpected response format from Etherscan")
+    // Convert interface{} to []models.EtherscanTx
+    resultJSON, _ := json.Marshal(etherscanResp.Result)
+    var transactions []models.EtherscanTx
+    if err := json.Unmarshal(resultJSON, &transactions); err != nil {
+        return nil, fmt.Errorf("failed to parse transactions: %v", err)
     }
 
-    return transactions, http.StatusOK, nil }
+    return transactions, nil
+}
 
 // AnalyzeTransactions determines beneficiaries recursively
 func AnalyzeTransactions(normal, internal, token []models.EtherscanTx) []models.Beneficiary {
@@ -111,4 +114,25 @@ func parseValue(value string) float64 {
 	var amount float64
 	fmt.Sscanf(value, "%f", &amount)
 	return amount / 1e18 // Convert from Wei to ETH
+}
+
+
+// Ethereum address validate karne ka function
+func isValidEthereumAddress(address string) bool {
+	// Address converted to lowercase 
+	address = strings.ToLower(address)
+
+	// Ethereum address regex pattern
+	re := regexp.MustCompile(`^0x[a-fA-F0-9]{40}$`)
+
+	// Check is matching address
+	return re.MatchString(address)
+}
+
+
+func ValidateAddress(address string) error {
+    if !isValidEthereumAddress(address) {
+        return errors.New("invalid Ethereum address")
+    }
+    return nil
 }
