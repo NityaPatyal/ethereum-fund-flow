@@ -68,9 +68,16 @@ The server will start on [http://localhost:8080](http://localhost:8080)
 
 ### 1. Get Beneficiary Data
 
+Hit the API endpoint using curl command in separate terminal
+
 **Request:**
-```http
-GET /beneficiary?address=<ethereum_address>
+```sh
+curl -X GET "http://localhost:8080/beneficiary?address=<address>" -H "Content-Type: application/json" > <file-path to save response>
+```
+
+Example:
+```sh
+curl -X GET "http://localhost:8080/beneficiary?address=0x1218E12D77A8D1ad56Ec2f6d3d09A428cb7FDA7c" -H "Content-Type: application/json" > output.json
 ```
 
 **Response:**
@@ -93,7 +100,43 @@ GET /beneficiary?address=<ethereum_address>
 }
 ```
 
+
+### 2. Get Payer Data
+
+Hit the API endpoint using curl command in separate terminal
+
+**Request:**
+```sh
+curl -X GET "http://localhost:8080/payer?address=<address>" -H "Content-Type: application/json" > <file-path to save response>
+```
+
+Example:
+```sh
+curl -X GET "http://localhost:8080/payer?address=0x1218E12D77A8D1ad56Ec2f6d3d09A428cb7FDA7c" -H "Content-Type: application/json" > output.json
+```
+
+**Response:**
+```json
+{
+  "message": "success",
+  "data": [
+    {
+      "payer_address": "0x...",
+      "amount": 1.5,
+      "transactions": [
+        {
+          "tx_amount": 1.5,
+          "date_time": "YYYY-MM-DD HH:MM:SS",
+          "transaction_id": "0x..."
+        }
+      ]
+    }
+  ]
+}
+```
+
 ---
+
 
 ## Running Tests
 
@@ -127,5 +170,3 @@ go test -v ./tests/
 
 ---
 
-## License
-This project is licensed under the MIT License.

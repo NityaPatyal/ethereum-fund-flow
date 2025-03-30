@@ -21,7 +21,6 @@ func main() {
 	if etherscanAPIKey == "" {
 		log.Fatal("Missing ETHERSCAN_API_KEY in .env file")
 	}
-	log.Println("API Key Loaded Successfully:", etherscanAPIKey[:5]+"****") // Masked for security
 
 	// Create a new router
 	router := routes.SetupRoutes()

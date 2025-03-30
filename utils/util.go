@@ -116,66 +116,91 @@ func calculateTotalAmount(transactions []models.TxInfo) float64 {
 }
 
 func AnalyzePayers(normalTxs, internalTxs, tokenTxs []models.EtherscanTx, targetAddress string) []models.Payer {
-	payerMap := make(map[string]*models.Payer)
+    payerMap := make(map[string]*models.Payer)
 
+    // Step 1: Direct Transactions (Where to == targetAddress)
+    directSenders := make(map[string]bool)
 	processTransaction := func(tx models.EtherscanTx) {
-		if tx.To == targetAddress {
-			amount, err := strconv.ParseFloat(tx.Value, 64)
-			if err != nil {
-				log.Printf("Error parsing amount: %v", err)
-				return
-			}
 
-			if _, exists := payerMap[tx.From]; !exists {
-				payerMap[tx.From] = &models.Payer{
-					PayerAddress: tx.From,
-					Amount:       0.0,
-					Transactions: []models.PayerTransaction{},
-				}
-			}
-
-			// ✅ Fix: Convert timestamp to int64
-			timestampInt, err := strconv.ParseInt(tx.TimeStamp, 10, 64)
-			if err != nil {
-				log.Printf("Error parsing timestamp: %v", err)
-				timestampInt = 0 // Default value
-			}
-
-			// ✅ Fix: Ensure Amount is float64
-			payerMap[tx.From].Amount += amount
-
-			payerMap[tx.From].Transactions = append(payerMap[tx.From].Transactions, models.PayerTransaction{
-				TxAmount:      amount,
-				DateTime:      time.Unix(timestampInt, 0).Format("2006-01-02 15:04:05"),
-				TransactionID: tx.Hash,
-			})
+		if strings.EqualFold(tx.To, targetAddress) {
+	
+			directSenders[tx.From] = true
+			addPayer(tx, payerMap)
 		}
 	}
+    
+    for _, tx := range normalTxs {
+        processTransaction(tx)
+    }
+    for _, tx := range internalTxs {
+        processTransaction(tx)
+    }
+    for _, tx := range tokenTxs {
+        processTransaction(tx)
+    }
 
-	for _, tx := range normalTxs {
-		processTransaction(tx)
-	}
-	for _, tx := range internalTxs {
-		processTransaction(tx)
-	}
-	for _, tx := range tokenTxs {
-		processTransaction(tx)
-	}
+    // Step 2: Backtrack - Find where the direct senders got their funds
+    for payer := range directSenders {
+        trackFunds(payer, normalTxs, internalTxs, tokenTxs, payerMap)
+    }
 
-	var payers []models.Payer
-	for _, payer := range payerMap {
-		payers = append(payers, *payer)
-	}
+    var payers []models.Payer
+    for _, payer := range payerMap {
+        payers = append(payers, *payer)
+    }
 
-	return payers
+    return payers
 }
 
-// parseValue converts string value to float64
-func parseValue(value string) float64 {
-	var amount float64
-	fmt.Sscanf(value, "%f", &amount)
-	return amount / 1e18 // Convert from Wei to ETH
+// Helper function to add payers to the map
+func addPayer(tx models.EtherscanTx, payerMap map[string]*models.Payer) {
+    amount, err := strconv.ParseFloat(tx.Value, 64)
+    if err != nil {
+        log.Printf("❌ Error parsing amount for Tx %s: %v", tx.Hash, err)
+        return
+    }
+
+    if _, exists := payerMap[tx.From]; !exists {
+        payerMap[tx.From] = &models.Payer{
+            PayerAddress: tx.From,
+            Amount:       0.0,
+            Transactions: []models.PayerTransaction{},
+        }
+    }
+
+    timestampInt, err := strconv.ParseInt(tx.TimeStamp, 10, 64)
+    if err != nil {
+        log.Printf("❌ Error parsing timestamp for Tx %s: %v", tx.Hash, err)
+        timestampInt = 0
+    }
+
+    payerMap[tx.From].Amount += amount
+    payerMap[tx.From].Transactions = append(payerMap[tx.From].Transactions, models.PayerTransaction{
+        TxAmount:      amount,
+        DateTime:      time.Unix(timestampInt, 0).Format("2006-01-02 15:04:05"),
+        TransactionID: tx.Hash,
+    })
 }
+
+// Backtrack to find where the payer got their funds
+func trackFunds(payer string, normalTxs, internalTxs, tokenTxs []models.EtherscanTx, payerMap map[string]*models.Payer) {
+    for _, tx := range normalTxs {
+        if tx.To == payer {
+            addPayer(tx, payerMap)
+        }
+    }
+    for _, tx := range internalTxs {
+        if tx.To == payer {
+            addPayer(tx, payerMap)
+        }
+    }
+    for _, tx := range tokenTxs {
+        if tx.To == payer {
+            addPayer(tx, payerMap)
+        }
+    }
+}
+
 func parseTimestamp(timestamp string) string {
     ts, err := strconv.ParseInt(timestamp, 10, 64)
     if err != nil {

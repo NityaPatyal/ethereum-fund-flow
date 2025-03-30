@@ -11,6 +11,7 @@ func SetupRoutes() *mux.Router {
 
 	// Define routes
 	router.HandleFunc("/beneficiary", handlers.Beneficiary).Methods("GET")
+	router.HandleFunc("/payer", handlers.Payer).Methods("GET")
 
 	return router
 }
