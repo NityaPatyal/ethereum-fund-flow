@@ -42,7 +42,7 @@ func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, er
 
     if etherscanResp.Status != "1" {
         errMsg := fmt.Sprintf("Etherscan API error: %s - %v", etherscanResp.Message, etherscanResp.Result)
-        return nil, fmt.Errorf(errMsg)
+        return nil, fmt.Errorf("%s", errMsg)
     }
 
     // Convert interface{} to []models.EtherscanTx
