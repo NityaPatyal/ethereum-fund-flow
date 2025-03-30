@@ -22,6 +22,7 @@ This project provides a Go-based API to analyze the flow of funds for a given Et
 ├── go.sum
 ├── handlers
 │   └── beneficiary.go
+│   └── payer.go
 ├── main.go
 ├── models
 │   └── types.go
@@ -29,6 +30,7 @@ This project provides a Go-based API to analyze the flow of funds for a given Et
 │   └── routes.go
 ├── tests
 │   └── beneficiary_test.go
+│   └── payer_test.go
 └── utils
     └── util.go
 ```

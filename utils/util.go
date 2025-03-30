@@ -56,60 +56,63 @@ func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, er
 }
 
 // AnalyzeTransactions determines beneficiaries recursively
-func AnalyzeTransactions(normal, internal, token []models.EtherscanTx) []models.Beneficiary {
-	// Parse transactions and build a transaction graph
-	txGraph := make(map[string][]models.TxInfo)
-	// Parse normal, internal, and token transactions, add to txGraph
-	processTransactions(normal, txGraph, "Normal")
-	processTransactions(internal, txGraph, "Internal")
-	processTransactions(token, txGraph, "Token")
+func AnalyzeTransactions(normalTxs, internalTxs, tokenTxs []models.EtherscanTx) []models.Beneficiary {
+	txGraph := make(map[string][]models.TxInfo) // Sender → List of Transactions
+	seenRecipients := make(map[string]bool)     // Track all recipients
+	allSenders := make(map[string]bool)         // Track senders
 
+	// Process Transactions
+	processTransactions(normalTxs, txGraph, seenRecipients, allSenders)
+	processTransactions(internalTxs, txGraph, seenRecipients, allSenders)
+	processTransactions(tokenTxs, txGraph, seenRecipients, allSenders)
 
-	// Find last recipients (ultimate beneficiaries)
-	beneficiaries := findUltimateBeneficiaries(txGraph)
+	// Find Beneficiaries (Addresses that receive funds but don't send)
+	var beneficiaries []models.Beneficiary
+	for recipient := range seenRecipients {
+		if !allSenders[recipient] { // If recipient is NOT a sender, it's a beneficiary
+			beneficiaries = append(beneficiaries, models.Beneficiary{
+				Address:      recipient,
+				Amount:       calculateTotalAmount(txGraph[recipient]),
+				Transactions: txGraph[recipient],
+			})
+		}
+	}
+
 	return beneficiaries
 }
 
-// findUltimateBeneficiaries finds the last recipients in a transaction chain
-func findUltimateBeneficiaries(txGraph map[string][]models.TxInfo) []models.Beneficiary {
-	visited := make(map[string]bool)
-	var results []models.Beneficiary
-
-	for _, transactions := range txGraph {
-		for _, tx := range transactions {
-			if !visited[tx.TransactionID] {
-				visited[tx.TransactionID] = true
-				results = append(results, models.Beneficiary{
-					Address: tx.TransactionID,
-					Amount:  tx.Amount,
-					Transactions: []models.TxInfo{tx},
-				})
-			}
+// processTransactions processes a list of transactions and populates the transaction graph
+func processTransactions(txs []models.EtherscanTx, txGraph map[string][]models.TxInfo, seenRecipients, allSenders map[string]bool) {
+	for _, tx := range txs {
+		amount, _ := strconv.ParseFloat(tx.Value, 64)
+		if amount <= 0 {
+			continue // Ignore zero-value transactions
 		}
+
+		txInfo := models.TxInfo{
+			TransactionID: tx.Hash,
+			TxAmount:      amount,
+			DateTime:      parseTimestamp(tx.TimeStamp),
+		}
+
+		// Add transaction to sender's record
+		txGraph[tx.To] = append(txGraph[tx.To], txInfo)
+
+		// Mark the recipient as seen
+		seenRecipients[tx.To] = true
+
+		// Track senders separately
+		allSenders[tx.From] = true
 	}
-	return results
 }
 
-// processTransactions fills txGraph from transaction data
-func processTransactions(transactions []models.EtherscanTx, txGraph map[string][]models.TxInfo, txType string) {
-    for _, tx := range transactions {
-        if tx.To == "" {
-            continue // Ignore transactions with no recipient
-        }
-
-        txInfo := models.TxInfo{
-            Amount:        parseValue(tx.Value),
-            DateTime:      tx.Time,
-            TransactionID: tx.Hash,
-        }
-
-        // Differentiate between transaction types
-        if txType == "Token" {
-            txGraph[tx.From] = append(txGraph[tx.From], txInfo) // Track token movements
-        } else {
-            txGraph[tx.To] = append(txGraph[tx.To], txInfo) // Track fund flow to recipients
-        }
-    }
+// calculateTotalAmount sums up transaction amounts for a given address
+func calculateTotalAmount(transactions []models.TxInfo) float64 {
+	var total float64
+	for _, tx := range transactions {
+		total += tx.TxAmount
+	}
+	return total
 }
 
 func AnalyzePayers(normalTxs, internalTxs, tokenTxs []models.EtherscanTx, targetAddress string) []models.Payer {
@@ -132,7 +135,7 @@ func AnalyzePayers(normalTxs, internalTxs, tokenTxs []models.EtherscanTx, target
 			}
 
 			// ✅ Fix: Convert timestamp to int64
-			timestampInt, err := strconv.ParseInt(tx.Time, 10, 64)
+			timestampInt, err := strconv.ParseInt(tx.TimeStamp, 10, 64)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				timestampInt = 0 // Default value
@@ -172,6 +175,13 @@ func parseValue(value string) float64 {
 	var amount float64
 	fmt.Sscanf(value, "%f", &amount)
 	return amount / 1e18 // Convert from Wei to ETH
+}
+func parseTimestamp(timestamp string) string {
+    ts, err := strconv.ParseInt(timestamp, 10, 64)
+    if err != nil {
+        return "" // Handle error gracefully
+    }
+    return time.Unix(ts, 0).Format("2006-01-02 15:04:05")
 }
 
 

@@ -2,40 +2,41 @@ package models
 
 // Beneficiary represents a single beneficiary structure
 type Beneficiary struct {
-    Address  string `json:"beneficiary_address"`
-	Amount       float64  `json:"amount"`
+    Address      string  `json:"beneficiary_address"`
+	Amount       float64 `json:"amount"`
 	Transactions []TxInfo `json:"transactions"`
 }
 
 // TxInfo represents transaction details
 type TxInfo struct {
-	Amount        float64 `json:"tx_amount"`
-	DateTime      string  `json:"date_time"`
 	TransactionID string  `json:"transaction_id"`
+	TxAmount      float64 `json:"tx_amount"`
+	DateTime      string  `json:"date_time"`
 }
 
-// Response structure
+// API Response structure for Beneficiary
 type APIResponse struct {
-	Message string       `json:"message"`
+	Message string        `json:"message"`
 	Data    []Beneficiary `json:"data"`
 }
 
-// Etherscan response structures
+// Etherscan transaction structure
 type EtherscanTx struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Value  string `json:"value"`
 	Hash   string `json:"hash"`
-	Time   string `json:"timeStamp"`
+	TimeStamp string `json:"timeStamp"` 
 }
 
-// Etherscan response structures
+// Etherscan response structure
 type EtherscanResponse struct {
 	Status  string        `json:"status"`
 	Message string        `json:"message"`
 	Result  []EtherscanTx `json:"result"`
 }
 
+// Payer-related structs
 type Payer struct {
 	PayerAddress string             `json:"payer_address"`
 	Amount       float64            `json:"amount"`
@@ -48,7 +49,8 @@ type PayerTransaction struct {
 	TransactionID string  `json:"transaction_id"`
 }
 
+// Payer API response structure
 type APIPayerResponse struct {
-	Message string       `json:"message"`
+	Message string  `json:"message"`
 	Data    []Payer `json:"data"`
 }

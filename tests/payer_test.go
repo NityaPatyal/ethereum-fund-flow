@@ -10,9 +10,9 @@ import (
 func TestAnalyzePayers(t *testing.T) {
 	// ✅ Dummy transaction data
 	transactions := []models.EtherscanTx{
-		{From: "0xSender1", To: "0xTarget", Value: "1.5", Hash: "0xTx1", Time: "1711711711"},
-		{From: "0xSender2", To: "0xTarget", Value: "2.0", Hash: "0xTx2", Time: "1711711712"},
-		{From: "0xSender1", To: "0xTarget", Value: "0.5", Hash: "0xTx3", Time: "1711711713"},
+		{From: "0xSender1", To: "0xTarget", Value: "1.5", Hash: "0xTx1", TimeStamp: "1711711711"},
+		{From: "0xSender2", To: "0xTarget", Value: "2.0", Hash: "0xTx2", TimeStamp: "1711711712"},
+		{From: "0xSender1", To: "0xTarget", Value: "0.5", Hash: "0xTx3", TimeStamp: "1711711713"},
 	}
 
 	// ✅ Call function
