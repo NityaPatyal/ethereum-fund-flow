@@ -21,6 +21,7 @@ type APIResponse struct {
 }
 
 // Etherscan transaction structure
+// EtherscanTx represents a transaction from Etherscan API response
 type EtherscanTx struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
@@ -34,6 +35,13 @@ type EtherscanResponse struct {
 	Status  string        `json:"status"`
 	Message string        `json:"message"`
 	Result  []EtherscanTx `json:"result"`
+}
+
+// EtherscanContractAPIResponse represents the response from Etherscan API for checking Contract Address
+type EtherscanContractAPIResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Result  string `json:"result"`
 }
 
 // Payer-related structs

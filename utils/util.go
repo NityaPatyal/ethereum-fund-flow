@@ -8,10 +8,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const etherscanAPI = "https://api.etherscan.io/api"
@@ -41,8 +44,7 @@ func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, er
     }
 
     if etherscanResp.Status != "1" {
-        errMsg := fmt.Sprintf("Etherscan API error: %s - %v", etherscanResp.Message, etherscanResp.Result)
-        return nil, fmt.Errorf("%s", errMsg)
+        return []models.EtherscanTx{}, nil // Return empty slice instead of an error
     }
 
     // Convert interface{} to []models.EtherscanTx
@@ -55,64 +57,66 @@ func FetchTransactions(address, action, apiKey string) ([]models.EtherscanTx, er
     return transactions, nil
 }
 
-// AnalyzeTransactions determines beneficiaries recursively
+
+// AnalyzeTransactions processes transactions to find beneficiaries
 func AnalyzeTransactions(normalTxs, internalTxs, tokenTxs []models.EtherscanTx) []models.Beneficiary {
-	txGraph := make(map[string][]models.TxInfo) // Sender → List of Transactions
-	seenRecipients := make(map[string]bool)     // Track all recipients
-	allSenders := make(map[string]bool)         // Track senders
+	beneficiaryMap := make(map[string]*models.Beneficiary)
 
-	// Process Transactions
-	processTransactions(normalTxs, txGraph, seenRecipients, allSenders)
-	processTransactions(internalTxs, txGraph, seenRecipients, allSenders)
-	processTransactions(tokenTxs, txGraph, seenRecipients, allSenders)
+	// Function to process each transaction
+	processTx := func(tx models.EtherscanTx, isToken bool, isInternal bool) {
+		to := tx.To
+		amount, _ := strconv.ParseFloat(tx.Value, 64)
+		if isToken {
+			amount, _ = strconv.ParseFloat(tx.Value, 64)
+		}
 
-	// Find Beneficiaries (Addresses that receive funds but don't send)
-	var beneficiaries []models.Beneficiary
-	for recipient := range seenRecipients {
-		if !allSenders[recipient] { // If recipient is NOT a sender, it's a beneficiary
-			beneficiaries = append(beneficiaries, models.Beneficiary{
-				Address:      recipient,
-				Amount:       calculateTotalAmount(txGraph[recipient]),
-				Transactions: txGraph[recipient],
+		// If internal transaction, check for smart contract involvement
+		if isInternal && IsContractAddress(to) {
+			finalBeneficiary := TraceFinalBeneficiary(to, internalTxs)
+			if finalBeneficiary != "" {
+				to = finalBeneficiary // Set the final traced recipient
+			}
+		}
+
+		// Ensure valid Ethereum address
+		if common.IsHexAddress(to) {
+			if _, exists := beneficiaryMap[to]; !exists {
+				beneficiaryMap[to] = &models.Beneficiary{
+					Address:      to,
+					Amount:       0,
+					Transactions: []models.TxInfo{},
+				}
+			}
+
+			// Convert timestamp and append transaction info
+			timestamp, _ := strconv.ParseInt(tx.TimeStamp, 10, 64)
+			beneficiaryMap[to].Amount += amount
+			beneficiaryMap[to].Transactions = append(beneficiaryMap[to].Transactions, models.TxInfo{
+				TransactionID: tx.Hash,
+				TxAmount:      amount,
+				DateTime:      time.Unix(timestamp, 0).Format("2006-01-02 15:04:05"),
 			})
 		}
 	}
 
+	// Process all three transaction types
+	for _, tx := range normalTxs {
+		processTx(tx, false, false) // Normal transaction (ETH transfer)
+	}
+	for _, tx := range internalTxs {
+		processTx(tx, false, true) // Internal transaction (ETH transfer with contract check)
+	}
+	for _, tx := range tokenTxs {
+		processTx(tx, true, false) // Token transfer
+	}
+
+	// Convert map to slice
+	var beneficiaries []models.Beneficiary
+	for _, b := range beneficiaryMap {
+		beneficiaries = append(beneficiaries, *b)
+	}
+
 	return beneficiaries
-}
-
-// processTransactions processes a list of transactions and populates the transaction graph
-func processTransactions(txs []models.EtherscanTx, txGraph map[string][]models.TxInfo, seenRecipients, allSenders map[string]bool) {
-	for _, tx := range txs {
-		amount, _ := strconv.ParseFloat(tx.Value, 64)
-		if amount <= 0 {
-			continue // Ignore zero-value transactions
-		}
-
-		txInfo := models.TxInfo{
-			TransactionID: tx.Hash,
-			TxAmount:      amount,
-			DateTime:      parseTimestamp(tx.TimeStamp),
-		}
-
-		// Add transaction to sender's record
-		txGraph[tx.To] = append(txGraph[tx.To], txInfo)
-
-		// Mark the recipient as seen
-		seenRecipients[tx.To] = true
-
-		// Track senders separately
-		allSenders[tx.From] = true
-	}
-}
-
-// calculateTotalAmount sums up transaction amounts for a given address
-func calculateTotalAmount(transactions []models.TxInfo) float64 {
-	var total float64
-	for _, tx := range transactions {
-		total += tx.TxAmount
-	}
-	return total
 }
 
 func AnalyzePayers(normalTxs, internalTxs, tokenTxs []models.EtherscanTx, targetAddress string) []models.Payer {
@@ -170,7 +174,7 @@ func addPayer(tx models.EtherscanTx, payerMap map[string]*models.Payer) {
 
     timestampInt, err := strconv.ParseInt(tx.TimeStamp, 10, 64)
     if err != nil {
-        log.Printf("❌ Error parsing timestamp for Tx %s: %v", tx.Hash, err)
+        log.Printf("Error parsing timestamp for Tx %s: %v", tx.Hash, err)
         timestampInt = 0
     }
 
@@ -180,6 +184,7 @@ func addPayer(tx models.EtherscanTx, payerMap map[string]*models.Payer) {
         DateTime:      time.Unix(timestampInt, 0).Format("2006-01-02 15:04:05"),
         TransactionID: tx.Hash,
     })
+
 }
 
 // Backtrack to find where the payer got their funds
@@ -201,15 +206,6 @@ func trackFunds(payer string, normalTxs, internalTxs, tokenTxs []models.Ethersca
     }
 }
 
-func parseTimestamp(timestamp string) string {
-    ts, err := strconv.ParseInt(timestamp, 10, 64)
-    if err != nil {
-        return "" // Handle error gracefully
-    }
-    return time.Unix(ts, 0).Format("2006-01-02 15:04:05")
-}
-
-
 // Ethereum address validate karne ka function
 func isValidEthereumAddress(address string) bool {
 	// Address converted to lowercase 
@@ -222,10 +218,48 @@ func isValidEthereumAddress(address string) bool {
 	return re.MatchString(address)
 }
 
-
 func ValidateAddress(address string) error {
     if !isValidEthereumAddress(address) {
         return errors.New("invalid Ethereum address")
     }
     return nil
+}
+
+// TraceFinalBeneficiary finds the final non-contract recipient from a series of internal transactions
+func TraceFinalBeneficiary(contractAddr string, internalTxs []models.EtherscanTx) string {
+	for _, tx := range internalTxs {
+		if tx.From == contractAddr {
+			if !IsContractAddress(tx.To) {
+				return tx.To // Found final beneficiary
+			}
+			return TraceFinalBeneficiary(tx.To, internalTxs) // Recursively trace
+		}
+	}
+	return contractAddr // If no further transfers, return original address
+}
+
+// IsContractAddress checks if the given Ethereum address is a smart contract
+func IsContractAddress(address string) bool {
+	apiKey := os.Getenv("ETHERSCAN_API_KEY")
+	if apiKey == "" {
+		fmt.Println("Etherscan API Key not set!")
+		return false
+	}
+
+	url := fmt.Sprintf("https://api.etherscan.io/api?module=contract&action=getabi&address=%s&apikey=%s", address, apiKey)
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Error fetching contract info:", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	var etherscanResp models.EtherscanContractAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&etherscanResp); err != nil {
+		fmt.Println("Error decoding response:", err)
+		return false
+	}
+
+	// If the result is "Contract source code not verified", it's likely not a contract
+	return etherscanResp.Result != "Contract source code not verified" && etherscanResp.Result != ""
 }

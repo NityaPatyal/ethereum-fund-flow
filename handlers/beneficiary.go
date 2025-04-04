@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"ethereum-fund-flow/models"
+	"ethereum-fund-flow/utils"
 	"net/http"
 	"os"
 	"sync"
-	"ethereum-fund-flow/utils"
-	"ethereum-fund-flow/models"
 )
 
 // BeneficiaryHandler handles API requests
@@ -37,7 +37,7 @@ func Beneficiary(w http.ResponseWriter, r *http.Request){
 		tokenTxs, err3 = utils.FetchTransactions(address, "tokentx", apiKey)
 	}()
 	wg.Wait()
-	
+
 	if err1 != nil || err2 != nil || err3 != nil {
 		status := http.StatusInternalServerError
 		http.Error(w, "Error fetching transactions", status)
